@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #e6ecf0, #b0c4de);
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.85);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(5px);
+            max-width: 90vw;
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #2c3e50;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: ֊direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        select, button {
+            padding: 10px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #4682b4;
+            color: #fff;
+            transition: background 0.3s ease;
+        }
+        select:hover, button:hover {
+            background: #5a9bd4;
+        }
+        .grid-container {
+            max-height: 60vh;
+            max-width: 90vw;
+            overflow: auto;
+            border-radius: 10px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(9, 50px);
+            gap: 2px;
+            background: #d3d9e0;
+            padding: 5px;
+            border-radius: 10px;
+        }
+        .cell {
+            width: 50px;
+            height: 50px;
+            background: #f5f6f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.6em;
+            font-weight: bold;
+            color: #2c3e50;
+            border: 1px solid #a0a8b0;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .cell[contenteditable="true"] {
+            cursor: pointer;
+            background: #ffffff;
+        }
+        .cell[contenteditable="true"]:hover {
+            background: #e8ecef;
+        }
+        .cell:not([contenteditable="true"]) {
+            background: #dfe6e9;
+            color: #1a252f;
+            font-weight: bold;
+        }
+        .cell.invalid {
+            background: #ff9999;
+        }
+        .cell:nth-child(3n):not(:nth-child(9n)) {
+            border-right: 4px solid #2c3e50;
+        }
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 4px solid #2c3e50;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 1em;
+            color: #2c3e50;
+        }
+        .footer a {
+            color: #4682b4;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        .footer a:hover {
+            color: #5a9bd4;
+        }
+        .page-footer {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: #2c3e50;
+        }
+        .page-footer a {
+            color: #4682b4;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        .page-footer a:hover {
+            color: #5a9bd4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sudoku</h1>
+        <div class="controls">
+            <select id="difficulty">
+                <option value="easy">Facile</option>
+                <option value="medium">Moyen</option>
+                <option value="hard">Difficile</option>
+            </select>
+            <button onclick="startGame()">Nouveau jeu</button>
+            <button onclick="checkSolution()">Vérifier</button>
+        </div>
+        <div class="grid-container">
+            <div id="grid" class="grid"></div>
+        </div>
+        <div class="footer">
+            Créé par <a href="https://github.com/elryan7" target="_blank">elryan7</a>
+        </div>
+    </div>
+    <div class="page-footer">
+        <a href="https://github.com/elryan7" target="_blank">GitHub.com/elryan7</a>
+    </div>
+
+    <script>
+        let grid = [];
+        let solution = [];
+
+        const difficulties = {
+            easy: 30,   // Nombre de cases à supprimer
+            medium: 40,
+            hard: 50
+        };
+
+        function startGame() {
+            const difficulty = document.getElementById('difficulty').value;
+            const cellsToRemove = difficulties[difficulty];
+            generateSudoku(cellsToRemove);
+            renderGrid();
+        }
+
+        function generateSudoku(cellsToRemove) {
+            // Initialiser une grille vide
+            grid = Array(9).fill().map(() => Array(9).fill(0));
+            solution = Array(9).fill().map(() => Array(9).fill(0));
+            // Remplir la grille avec une solution valide
+            fillDiagonal();
+            fillRemaining(0, 3);
+            // Copier la grille complète dans la solution
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    solution[i][j] = grid[i][j];
+                }
+            }
+            // Supprimer des cases selon la difficulté
+            removeCells(cellsToRemove);
+        }
+
+        function fillDiagonal() {
+            for (let i = 0; i < 9; i += 3) {
+                fillBox(i, i);
+            }
+        }
+
+        function fillBox(row, col) {
+            let num;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    do {
+                        num = Math.floor(Math.random() * 9) + 1;
+                    } while (!isSafe(row + i, col + j, num));
+                    grid[row + i][col + j] = num;
+                }
+            }
+        }
+
+        function isSafe(row, col, num) {
+            return (
+                !usedInRow(row, num) &&
+                !usedInCol(col, num) &&
+                !usedInBox(row - (row % 3), col - (col % 3), num)
+            );
+        }
+
+        function usedInRow(row, num) {
+            return grid[row].includes(num);
+        }
+
+        function usedInCol(col, num) {
+            return grid.some(row => row[col] === num);
+        }
+
+        function usedInBox(startRow, startCol, num) {
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (grid[startRow + i][startCol + j] === num) return true;
+                }
+            }
+            return false;
+        }
+
+        function fillRemaining(i, j) {
+            if (j >= 9 && i < 8) {
+                i++;
+                j = 0;
+            }
+            if (i >= 9 && j >= 9) return true;
+            if (i < 3) {
+                if (j < 3) j = 3;
+            } else if (i < 6) {
+                if (j === Math.floor(i / 3) * 3) j += 3;
+            } else {
+                if (j === 6) {
+                    i++;
+                    j = 0;
+                    if (i >= 9) return true;
+                }
+            }
+            for (let num = 1; num <= 9; num++) {
+                if (isSafe(i, j, num)) {
+                    grid[i][j] = num;
+                    if (fillRemaining(i, j + 1)) return true;
+                    grid[i][j] = 0;
+                }
+            }
+            return false;
+        }
+
+        function removeCells(count) {
+            while (count > 0) {
+                const row = Math.floor(Math.random() * 9);
+                const col = Math.floor(Math.random() * 9);
+                if (grid[row][col] !== 0) {
+                    grid[row][col] = 0;
+                    count--;
+                }
+            }
+        }
+
+        function renderGrid() {
+            const gridElement = document.getElementById('grid');
+            gridElement.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    if (grid[i][j] !== 0) {
+                        cell.textContent = grid[i][j];
+                    } else {
+                        cell.contentEditable = true;
+                        cell.addEventListener('input', handleInput);
+                    }
+                    gridElement.appendChild(cell);
+                }
+            }
+        }
+
+        function handleInput(event) {
+            const cell = event.target;
+            const row = parseInt(cell.dataset.row);
+            const col = parseInt(cell.dataset.col);
+            const value = cell.textContent.trim();
+            if (value === '') {
+                grid[row][col] = 0;
+                cell.classList.remove('invalid');
+                return;
+            }
+            const num = parseInt(value);
+            if (isNaN(num) || num < 1 || num > 9) {
+                cell.textContent = '';
+                grid[row][col] = 0;
+                cell.classList.add('invalid');
+            } else {
+                grid[row][col] = num;
+                cell.classList.remove('invalid');
+                if (!isSafe(row, col, num)) {
+                    cell.classList.add('invalid');
+                }
+            }
+        }
+
+        function checkSolution() {
+            let isValid = true;
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+                    if (grid[i][j] !== solution[i][j]) {
+                        cell.classList.add('invalid');
+                        isValid = false;
+                    } else {
+                        cell.classList.remove('invalid');
+                    }
+                }
+            }
+            if (isValid) {
+                alert('Félicitations ! Vous avez résolu le Sudoku !');
+            } else {
+                alert('Il y a des erreurs dans la grille. Vérifiez les cases rouges.');
+            }
+        }
+
+        startGame();
+    </script>
+</body>
+</html>
