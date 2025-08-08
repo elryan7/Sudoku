@@ -18,12 +18,13 @@
         }
         .container {
             text-align: center;
-            background: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.9);
             padding: 20px;
             border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
             backdrop-filter: blur(5px);
             max-width: 90vw;
+            width: 100%;
         }
         h1 {
             font-size: 2.5em;
@@ -33,7 +34,8 @@
         }
         .controls {
             margin-bottom: 20px;
-            display: ֊direction: column;
+            display: flex;
+            flex-wrap: wrap;
             justify-content: center;
             align-items: center;
             gap: 10px;
@@ -46,10 +48,16 @@
             cursor: pointer;
             background: #4682b4;
             color: #fff;
-            transition: background 0.3s ease;
+            transition: background 0.3s ease, transform 0.1s;
         }
         select:hover, button:hover {
             background: #5a9bd4;
+            transform: scale(1.05);
+        }
+        .timer {
+            font-size: 1.2em;
+            color: #2c3e50;
+            margin: 10px 0;
         }
         .grid-container {
             max-height: 60vh;
@@ -59,14 +67,15 @@
         }
         .grid {
             display: grid;
-            grid-template-columns: repeat(9, 50px);
+            grid-template-columns: repeat(9, minmax(40px, 50px));
             gap: 2px;
             background: #d3d9e0;
             padding: 5px;
             border-radius: 10px;
+            width: fit-content;
         }
         .cell {
-            width: 50px;
+            width: 100%;
             height: 50px;
             background: #f5f6f5;
             display: flex;
@@ -94,6 +103,9 @@
         .cell.invalid {
             background: #ff9999;
         }
+        .cell.hint {
+            background: #ccffcc;
+        }
         .cell:nth-child(3n):not(:nth-child(9n)) {
             border-right: 4px solid #2c3e50;
         }
@@ -101,32 +113,30 @@
         .cell:nth-child(n+46):nth-child(-n+54) {
             border-bottom: 4px solid #2c3e50;
         }
-        .footer {
+        .footer, .page-footer {
             margin-top: 20px;
             font-size: 1em;
             color: #2c3e50;
         }
-        .footer a {
+        .footer a, .page-footer a {
             color: #4682b4;
             text-decoration: none;
             transition: color 0.3s ease;
         }
-        .footer a:hover {
+        .footer a:hover, .page-footer a:hover {
             color: #5a9bd4;
         }
-        .page-footer {
-            margin-top: 20px;
-            margin-bottom: 20px;
-            font-size: 0.9em;
-            color: #2c3e50;
-        }
-        .page-footer a {
-            color: #4682b4;
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-        .page-footer a:hover {
-            color: #5a9bd4;
+        @media (max-width: 600px) {
+            .grid {
+                grid-template-columns: repeat(9, minmax(30px, 40px));
+            }
+            .cell {
+                font-size: 1.2em;
+                height: 40px;
+            }
+            h1 {
+                font-size: 2em;
+            }
         }
     </style>
 </head>
@@ -141,7 +151,10 @@
             </select>
             <button onclick="startGame()">Nouveau jeu</button>
             <button onclick="checkSolution()">Vérifier</button>
+            <button onclick="getHint()">Indice</button>
+            <button onclick="solvePuzzle()">Résoudre</button>
         </div>
+        <div class="timer" id="timer">Temps: 00:00</div>
         <div class="grid-container">
             <div id="grid" class="grid"></div>
         </div>
@@ -156,11 +169,14 @@
     <script>
         let grid = [];
         let solution = [];
+        let startTime;
+        let timerInterval;
+        let hintUsed = false;
 
         const difficulties = {
-            easy: 30,   // Nombre de cases à supprimer
+            easy: 30,
             medium: 40,
-            hard: 50
+            hard: 60
         };
 
         function startGame() {
@@ -168,23 +184,35 @@
             const cellsToRemove = difficulties[difficulty];
             generateSudoku(cellsToRemove);
             renderGrid();
+            startTimer();
+            hintUsed = false;
+        }
+
+        function startTimer() {
+            startTime = Date.now();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const seconds = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('timer').textContent = `Temps: ${minutes}:${seconds}`;
         }
 
         function generateSudoku(cellsToRemove) {
-            // Initialiser une grille vide
             grid = Array(9).fill().map(() => Array(9).fill(0));
             solution = Array(9).fill().map(() => Array(9).fill(0));
-            // Remplir la grille avec une solution valide
             fillDiagonal();
             fillRemaining(0, 3);
-            // Copier la grille complète dans la solution
             for (let i = 0; i < 9; i++) {
                 for (let j = 0; j < 9; j++) {
                     solution[i][j] = grid[i][j];
                 }
             }
-            // Supprimer des cases selon la difficulté
             removeCells(cellsToRemove);
+            if (difficulty === 'hard') ensureUniqueSolution();
         }
 
         function fillDiagonal() {
@@ -268,6 +296,58 @@
             }
         }
 
+        function ensureUniqueSolution() {
+            let tempGrid = grid.map(row => [...row]);
+            let solutions = 0;
+            countSolutions(tempGrid, solutions);
+            if (solutions !== 1) {
+                generateSudoku(difficulties.hard);
+            }
+        }
+
+        function countSolutions(tempGrid, solutions) {
+            if (solutions > 1) return;
+            let row, col;
+            let found = false;
+            for (row = 0; row < 9; row++) {
+                for (col = 0; col < 9; col++) {
+                    if (tempGrid[row][col] === 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+            if (!found) {
+                solutions++;
+                return;
+            }
+            for (let num = 1; num <= 9; num++) {
+                if (isSafeForTemp(tempGrid, row, col, num)) {
+                    tempGrid[row][col] = num;
+                    countSolutions(tempGrid, solutions);
+                    tempGrid[row][col] = 0;
+                }
+            }
+        }
+
+        function isSafeForTemp(tempGrid, row, col, num) {
+            return (
+                !tempGrid[row].includes(num) &&
+                !tempGrid.some(r => r[col] === num) &&
+                !usedInBoxForTemp(tempGrid, row - (row % 3), col - (col % 3), num)
+            );
+        }
+
+        function usedInBoxForTemp(tempGrid, startRow, startCol, num) {
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (tempGrid[startRow + i][startCol + j] === num) return true;
+                }
+            }
+            return false;
+        }
+
         function renderGrid() {
             const gridElement = document.getElementById('grid');
             gridElement.innerHTML = '';
@@ -295,7 +375,8 @@
             const value = cell.textContent.trim();
             if (value === '') {
                 grid[row][col] = 0;
-                cell.classList.remove('invalid');
+                cell.classList.remove('invalid', 'hint');
+                checkCompletion();
                 return;
             }
             const num = parseInt(value);
@@ -309,6 +390,7 @@
                 if (!isSafe(row, col, num)) {
                     cell.classList.add('invalid');
                 }
+                checkCompletion();
             }
         }
 
@@ -326,10 +408,54 @@
                 }
             }
             if (isValid) {
+                clearInterval(timerInterval);
                 alert('Félicitations ! Vous avez résolu le Sudoku !');
             } else {
                 alert('Il y a des erreurs dans la grille. Vérifiez les cases rouges.');
             }
+        }
+
+        function checkCompletion() {
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (grid[i][j] !== solution[i][j]) return;
+                }
+            }
+            clearInterval(timerInterval);
+            alert('Félicitations ! Vous avez résolu le Sudoku !');
+        }
+
+        function getHint() {
+            if (hintUsed) {
+                alert('Vous avez déjà utilisé votre indice pour cette partie !');
+                return;
+            }
+            let emptyCells = [];
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (grid[i][j] === 0) {
+                        emptyCells.push([i, j]);
+                    }
+                }
+            }
+            if (emptyCells.length === 0) {
+                alert('Aucune case vide pour un indice !');
+                return;
+            }
+            const [row, col] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+            grid[row][col] = solution[row][col];
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            cell.textContent = solution[row][col];
+            cell.contentEditable = false;
+            cell.classList.add('hint');
+            hintUsed = true;
+        }
+
+        function solvePuzzle() {
+            clearInterval(timerInterval);
+            grid = solution.map(row => [...row]);
+            renderGrid();
+            alert('La solution a été affichée.');
         }
 
         startGame();
